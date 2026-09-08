@@ -27,6 +27,10 @@ local Status = strict("Session.Status", {
 	Disconnected = "Disconnected",
 })
 
+local SYNC_EVENT_NAME = "__RojoSync"
+
+
+
 local function debugPatch(object)
 	return Fmt.debugify(object, function(patch, output)
 		output:writeLine("Patch {{")
@@ -97,6 +101,20 @@ function ServeSession.new(options)
 	end)
 	table.insert(connections, connection)
 
+
+	local syncEvent = ReplicatedStorage:FindFirstChild(SYNC_EVENT_NAME)
+
+	if syncEvent == nil then
+		syncEvent = Instance.new("BindableEvent")
+		syncEvent.Name = SYNC_EVENT_NAME
+		syncEvent.Parent = ReplicatedStorage
+	elseif not syncEvent:IsA("BindableEvent") then
+		error(
+			("Expected %q in ReplicatedStorage to be a BindableEvent, got %s")
+				:format(SYNC_EVENT_NAME, syncEvent.ClassName)
+		)
+	end
+
 	self = {
 		__status = Status.NotStarted,
 		__apiContext = options.apiContext,
@@ -109,6 +127,7 @@ function ServeSession.new(options)
 		__precommitCallbacks = {},
 		__postcommitCallbacks = {},
 		__updateLoadingText = function() end,
+		__syncEvent = syncEvent,
 	}
 
 	setmetatable(self, ServeSession)
@@ -482,6 +501,8 @@ function ServeSession:__applyPatch(patch)
 	if historyRecording then
 		ChangeHistoryService:FinishRecording(historyRecording, Enum.FinishRecordingOperation.Commit)
 	end
+
+	self.__syncEvent:Fire()
 end
 
 function ServeSession:__initialSync(serverInfo)
